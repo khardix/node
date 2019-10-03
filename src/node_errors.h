@@ -148,8 +148,8 @@ inline v8::Local<v8::Value> ERR_STRING_TOO_LONG(v8::Isolate* isolate) {
 
 #define THROW_AND_RETURN_IF_NOT_STRING(env, val, prefix)                     \
   do {                                                                       \
-    if (!val->IsString())                                                    \
-      return node::THROW_ERR_INVALID_ARG_TYPE(env,                           \
+    if (!(val)->IsString())                                                  \
+      return node::THROW_ERR_INVALID_ARG_TYPE((env),                         \
                                               prefix " must be a string");   \
   } while (0)
 

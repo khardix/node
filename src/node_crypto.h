@@ -39,6 +39,12 @@
 // OpenSSL backport shims
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 
+// Declare what OpenSSL features we do not support
+// Pretending we are BoringSSL can also help
+#define OPENSSL_IS_BORINGSSL
+#define OPENSSL_NO_OCB
+#define OPENSSL_NO_SCRYPT
+
 #define EVP_CTRL_AEAD_SET_TAG EVP_CTRL_CCM_SET_TAG
 #define EVP_MD_CTX_free EVP_MD_CTX_destroy
 #define EVP_MD_CTX_new EVP_MD_CTX_create
