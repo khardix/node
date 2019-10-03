@@ -128,6 +128,137 @@ struct OpenSSLBufferDeleter {
 };
 using OpenSSLBuffer = std::unique_ptr<char[], OpenSSLBufferDeleter>;
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+static void RSA_get0_key(const RSA* r, const BIGNUM** n, const BIGNUM** e,
+                         const BIGNUM** d) {
+  if (n != nullptr) {
+    *n = r->n;
+  }
+  if (e != nullptr) {
+    *e = r->e;
+  }
+  if (d != nullptr) {
+    *d = r->d;
+  }
+}
+
+static void DH_get0_pqg(const DH* dh, const BIGNUM** p, const BIGNUM** q,
+                        const BIGNUM** g) {
+  if (p != nullptr) {
+    *p = dh->p;
+  }
+  if (q != nullptr) {
+    *q = dh->q;
+  }
+  if (g != nullptr) {
+    *g = dh->g;
+  }
+}
+
+static int DH_set0_pqg(DH* dh, BIGNUM* p, BIGNUM* q, BIGNUM* g) {
+  if ((dh->p == nullptr && p == nullptr) ||
+      (dh->g == nullptr && g == nullptr)) {
+    return 0;
+  }
+
+  if (p != nullptr) {
+    BN_free(dh->p);
+    dh->p = p;
+  }
+  if (q != nullptr) {
+    BN_free(dh->q);
+    dh->q = q;
+  }
+  if (g != nullptr) {
+    BN_free(dh->g);
+    dh->g = g;
+  }
+
+  return 1;
+}
+
+static void DH_get0_key(const DH* dh, const BIGNUM** pub_key,
+                        const BIGNUM** priv_key) {
+  if (pub_key != nullptr) {
+    *pub_key = dh->pub_key;
+  }
+  if (priv_key != nullptr) {
+    *priv_key = dh->priv_key;
+  }
+}
+
+static int DH_set0_key(DH* dh, BIGNUM* pub_key, BIGNUM* priv_key) {
+  if (pub_key != nullptr) {
+    BN_free(dh->pub_key);
+    dh->pub_key = pub_key;
+  }
+  if (priv_key != nullptr) {
+    BN_free(dh->priv_key);
+    dh->priv_key = priv_key;
+  }
+
+  return 1;
+}
+
+static const SSL_METHOD* TLS_method() { return SSLv23_method(); }
+
+static void SSL_SESSION_get0_ticket(const SSL_SESSION* s,
+                                    const unsigned char** tick, size_t* len) {
+  *len = s->tlsext_ticklen;
+  if (tick != nullptr) {
+    *tick = s->tlsext_tick;
+  }
+}
+
+#define SSL_get_tlsext_status_type(ssl) (ssl->tlsext_status_type)
+
+static int X509_STORE_up_ref(X509_STORE* store) {
+  CRYPTO_add(&store->references, 1, CRYPTO_LOCK_X509_STORE);
+  return 1;
+}
+
+static int X509_up_ref(X509* cert) {
+  CRYPTO_add(&cert->references, 1, CRYPTO_LOCK_X509);
+  return 1;
+}
+
+HMAC_CTX* HMAC_CTX_new() {
+  HMAC_CTX* ctx = Malloc<HMAC_CTX>(1);
+  HMAC_CTX_init(ctx);
+  return ctx;
+}
+
+// Disable all TLS version lower than the version argument
+int SSL_CTX_set_min_proto_version(SSL_CTX *ctx, int version) {
+    switch (version) {
+        [[gnu::fallthrough]] case TLS1_2_VERSION:
+            SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_1);
+        [[gnu::fallthrough]] case TLS1_1_VERSION:
+            SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1);
+        [[gnu::fallthrough]] case TLS1_VERSION:
+            SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv3);
+            return 1;
+        default:
+            return 0;  // unsupported
+    }
+}
+// Disable all TLS version higher than the version argument
+int SSL_CTX_set_max_proto_version(SSL_CTX *ctx, int version) {
+    switch (version) {
+        [[gnu::fallthrough]] case TLS1_VERSION:
+            SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_1);
+        [[gnu::fallthrough]] case TLS1_1_VERSION:
+            SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_2);
+        [[gnu::fallthrough]] case TLS1_2_VERSION:
+            return 1;
+        default:
+            return 0;  // unsupported
+    }
+}
+
+#endif  // OPENSSL_VERSION_NUMBER < 0x10100000L
+
+
 static const char* const root_certs[] = {
 #include "node_root_certs.h"  // NOLINT(build/include_order)
 };
@@ -144,11 +275,19 @@ template void SSLWrap<TLSWrap>::AddMethods(Environment* env,
 template void SSLWrap<TLSWrap>::ConfigureSecureContext(SecureContext* sc);
 template void SSLWrap<TLSWrap>::SetSNIContext(SecureContext* sc);
 template int SSLWrap<TLSWrap>::SetCACerts(SecureContext* sc);
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+template SSL_SESSION* SSLWrap<TLSWrap>::GetSessionCallback(
+    SSL* s,
+    unsigned char* key,
+    int len,
+    int* copy);
+#else
 template SSL_SESSION* SSLWrap<TLSWrap>::GetSessionCallback(
     SSL* s,
     const unsigned char* key,
     int len,
     int* copy);
+#endif
 template int SSLWrap<TLSWrap>::NewSessionCallback(SSL* s,
                                                   SSL_SESSION* sess);
 template void SSLWrap<TLSWrap>::KeylogCallback(const SSL* s,
@@ -167,6 +306,35 @@ template int SSLWrap<TLSWrap>::SelectALPNCallback(
     const unsigned char* in,
     unsigned int inlen,
     void* arg);
+
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+static Mutex* mutexes;
+
+static void crypto_threadid_cb(CRYPTO_THREADID* tid) {
+  static_assert(sizeof(uv_thread_t) <= sizeof(void*),
+                "uv_thread_t does not fit in a pointer");
+  CRYPTO_THREADID_set_pointer(tid, reinterpret_cast<void*>(uv_thread_self()));
+}
+
+
+static void crypto_lock_init(void) {
+  mutexes = new Mutex[CRYPTO_num_locks()];
+}
+
+
+static void crypto_lock_cb(int mode, int n, const char* file, int line) {
+  CHECK(!(mode & CRYPTO_LOCK) ^ !(mode & CRYPTO_UNLOCK));
+  CHECK(!(mode & CRYPTO_READ) ^ !(mode & CRYPTO_WRITE));
+
+  auto mutex = &mutexes[n];
+  if (mode & CRYPTO_LOCK)
+    mutex->Lock();
+  else
+    mutex->Unlock();
+}
+#endif
+
 
 static int PasswordCallback(char* buf, int size, int rwflag, void* u) {
   const char* passphrase = static_cast<char*>(u);
@@ -299,15 +467,10 @@ Maybe<bool> Decorate(Environment* env, Local<Object> obj,
     V(COMP)                                                                   \
     V(ECDSA)                                                                  \
     V(ECDH)                                                                   \
-    V(OSSL_STORE)                                                             \
     V(FIPS)                                                                   \
     V(CMS)                                                                    \
     V(TS)                                                                     \
     V(HMAC)                                                                   \
-    V(CT)                                                                     \
-    V(ASYNC)                                                                  \
-    V(KDF)                                                                    \
-    V(SM2)                                                                    \
     V(USER)                                                                   \
 
 #define V(name) case ERR_LIB_##name: lib = #name "_"; break;
@@ -479,10 +642,12 @@ void SecureContext::Initialize(Environment* env, Local<Object> target) {
   env->SetProtoMethod(t, "setCiphers", SetCiphers);
   env->SetProtoMethod(t, "setECDHCurve", SetECDHCurve);
   env->SetProtoMethod(t, "setDHParam", SetDHParam);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   env->SetProtoMethod(t, "setMaxProto", SetMaxProto);
   env->SetProtoMethod(t, "setMinProto", SetMinProto);
   env->SetProtoMethod(t, "getMaxProto", GetMaxProto);
   env->SetProtoMethod(t, "getMinProto", GetMinProto);
+#endif
   env->SetProtoMethod(t, "setOptions", SetOptions);
   env->SetProtoMethod(t, "setSessionIdContext", SetSessionIdContext);
   env->SetProtoMethod(t, "setSessionTimeout", SetSessionTimeout);
@@ -533,9 +698,13 @@ void SecureContext::New(const FunctionCallbackInfo<Value>& args) {
   new SecureContext(env, args.This());
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 // A maxVersion of 0 means "any", but OpenSSL may support TLS versions that
 // Node.js doesn't, so pin the max to what we do support.
 const int MAX_SUPPORTED_VERSION = TLS1_3_VERSION;
+#else
+const int MAX_SUPPORTED_VERSION = TLS1_2_VERSION;
+#endif
 
 void SecureContext::Init(const FunctionCallbackInfo<Value>& args) {
   SecureContext* sc;
@@ -548,7 +717,7 @@ void SecureContext::Init(const FunctionCallbackInfo<Value>& args) {
 
   int min_version = args[1].As<Int32>()->Value();
   int max_version = args[2].As<Int32>()->Value();
-  const SSL_METHOD* method = TLS_method();
+  const SSL_METHOD* method = SSLv23_method();
 
   if (max_version == 0)
     max_version = MAX_SUPPORTED_VERSION;
@@ -582,54 +751,54 @@ void SecureContext::Init(const FunctionCallbackInfo<Value>& args) {
       max_version = TLS1_2_VERSION;
     } else if (strcmp(*sslmethod, "SSLv23_server_method") == 0) {
       max_version = TLS1_2_VERSION;
-      method = TLS_server_method();
+      method = SSLv23_server_method();
     } else if (strcmp(*sslmethod, "SSLv23_client_method") == 0) {
       max_version = TLS1_2_VERSION;
-      method = TLS_client_method();
+      method = SSLv23_client_method();
     } else if (strcmp(*sslmethod, "TLS_method") == 0) {
       min_version = 0;
       max_version = MAX_SUPPORTED_VERSION;
     } else if (strcmp(*sslmethod, "TLS_server_method") == 0) {
       min_version = 0;
       max_version = MAX_SUPPORTED_VERSION;
-      method = TLS_server_method();
+      method = SSLv23_server_method();
     } else if (strcmp(*sslmethod, "TLS_client_method") == 0) {
       min_version = 0;
       max_version = MAX_SUPPORTED_VERSION;
-      method = TLS_client_method();
+      method = SSLv23_client_method();
     } else if (strcmp(*sslmethod, "TLSv1_method") == 0) {
       min_version = TLS1_VERSION;
       max_version = TLS1_VERSION;
     } else if (strcmp(*sslmethod, "TLSv1_server_method") == 0) {
       min_version = TLS1_VERSION;
       max_version = TLS1_VERSION;
-      method = TLS_server_method();
+      method = SSLv23_server_method();
     } else if (strcmp(*sslmethod, "TLSv1_client_method") == 0) {
       min_version = TLS1_VERSION;
       max_version = TLS1_VERSION;
-      method = TLS_client_method();
+      method = SSLv23_client_method();
     } else if (strcmp(*sslmethod, "TLSv1_1_method") == 0) {
       min_version = TLS1_1_VERSION;
       max_version = TLS1_1_VERSION;
     } else if (strcmp(*sslmethod, "TLSv1_1_server_method") == 0) {
       min_version = TLS1_1_VERSION;
       max_version = TLS1_1_VERSION;
-      method = TLS_server_method();
+      method = SSLv23_server_method();
     } else if (strcmp(*sslmethod, "TLSv1_1_client_method") == 0) {
       min_version = TLS1_1_VERSION;
       max_version = TLS1_1_VERSION;
-      method = TLS_client_method();
+      method = SSLv23_client_method();
     } else if (strcmp(*sslmethod, "TLSv1_2_method") == 0) {
       min_version = TLS1_2_VERSION;
       max_version = TLS1_2_VERSION;
     } else if (strcmp(*sslmethod, "TLSv1_2_server_method") == 0) {
       min_version = TLS1_2_VERSION;
       max_version = TLS1_2_VERSION;
-      method = TLS_server_method();
+      method = SSLv23_server_method();
     } else if (strcmp(*sslmethod, "TLSv1_2_client_method") == 0) {
       min_version = TLS1_2_VERSION;
       max_version = TLS1_2_VERSION;
-      method = TLS_client_method();
+      method = SSLv23_client_method();
     } else {
       const std::string msg("Unknown method: ");
       THROW_ERR_TLS_INVALID_PROTOCOL_METHOD(env, (msg + * sslmethod).c_str());
@@ -659,9 +828,16 @@ void SecureContext::Init(const FunctionCallbackInfo<Value>& args) {
                                  SSL_SESS_CACHE_NO_INTERNAL |
                                  SSL_SESS_CACHE_NO_AUTO_CLEAR);
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  if (max_version == 0) {
+    // Selecting some secureProtocol methods allows the TLS version to be "any
+    // supported", but we don't support TLSv1.3, even if OpenSSL does.
+    max_version = TLS1_2_VERSION;
+  }
+#endif
   SSL_CTX_set_min_proto_version(sc->ctx_.get(), min_version);
   SSL_CTX_set_max_proto_version(sc->ctx_.get(), max_version);
-
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   // OpenSSL 1.1.0 changed the ticket key size, but the OpenSSL 1.0.x size was
   // exposed in the public API. To retain compatibility, install a callback
   // which restores the old algorithm.
@@ -671,6 +847,7 @@ void SecureContext::Init(const FunctionCallbackInfo<Value>& args) {
     return env->ThrowError("Error generating ticket keys");
   }
   SSL_CTX_set_tlsext_ticket_key_cb(sc->ctx_.get(), TicketCompatibilityCallback);
+#endif
 }
 
 
@@ -1123,6 +1300,7 @@ void SecureContext::SetCipherSuites(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::SetCiphers(const FunctionCallbackInfo<Value>& args) {
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   SecureContext* sc;
   ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   Environment* env = sc->env();
@@ -1146,6 +1324,34 @@ void SecureContext::SetCiphers(const FunctionCallbackInfo<Value>& args) {
       // that's actually an error.
       return;
     }
+#else
+  THROW_AND_RETURN_IF_NOT_STRING(env, args[0], "Ciphers");
+
+  // Note: set_ciphersuites() is for TLSv1.3 and was introduced in openssl
+  // 1.1.1, set_cipher_list() is for TLSv1.2 and earlier.
+  //
+  // In openssl 1.1.0, set_cipher_list() would error if it resulted in no
+  // TLSv1.2 (and earlier) cipher suites, and there is no TLSv1.3 support.
+  //
+  // In openssl 1.1.1, set_cipher_list() will not error if it results in no
+  // TLSv1.2 cipher suites if there are any TLSv1.3 cipher suites, which there
+  // are by default. There will be an error later, during the handshake, but
+  // that results in an async error event, rather than a sync error thrown,
+  // which is a semver-major change for the tls API.
+  //
+  // Since we don't currently support TLSv1.3, work around this by removing the
+  // TLSv1.3 cipher suites, so we get backwards compatible synchronous errors.
+  const node::Utf8Value ciphers(args.GetIsolate(), args[0]);
+  if (
+#if defined(TLS1_3_VERSION) && !defined(OPENSSL_IS_BORINGSSL)
+      !SSL_CTX_set_ciphersuites(sc->ctx_.get(), "") ||
+#endif
+      !SSL_CTX_set_cipher_list(sc->ctx_.get(), *ciphers)) {
+    unsigned long err = ERR_get_error();  // NOLINT(runtime/int)
+    if (!err) {
+      return env->ThrowError("Failed to set ciphers");
+    }
+#endif
     return ThrowCryptoError(env, err);
   }
 }
@@ -1162,6 +1368,11 @@ void SecureContext::SetECDHCurve(const FunctionCallbackInfo<Value>& args) {
   THROW_AND_RETURN_IF_NOT_STRING(env, args[0], "ECDH curve name");
 
   node::Utf8Value curve(env->isolate(), args[0]);
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  SSL_CTX_set_options(sc->ctx_.get(), SSL_OP_SINGLE_ECDH_USE);
+  SSL_CTX_set_ecdh_auto(sc->ctx_.get(), 1);
+#endif
 
   if (strcmp(*curve, "auto") == 0)
     return;
@@ -1214,6 +1425,7 @@ void SecureContext::SetDHParam(const FunctionCallbackInfo<Value>& args) {
 }
 
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 void SecureContext::SetMinProto(const FunctionCallbackInfo<Value>& args) {
   SecureContext* sc;
   ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
@@ -1262,6 +1474,7 @@ void SecureContext::GetMaxProto(const FunctionCallbackInfo<Value>& args) {
     SSL_CTX_get_max_proto_version(sc->ctx_.get());
   args.GetReturnValue().Set(static_cast<uint32_t>(version));
 }
+#endif
 
 
 void SecureContext::SetOptions(const FunctionCallbackInfo<Value>& args) {
@@ -1468,9 +1681,17 @@ void SecureContext::GetTicketKeys(const FunctionCallbackInfo<Value>& args) {
   ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
   Local<Object> buff = Buffer::New(wrap->env(), 48).ToLocalChecked();
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   memcpy(Buffer::Data(buff), wrap->ticket_key_name_, 16);
   memcpy(Buffer::Data(buff) + 16, wrap->ticket_key_hmac_, 16);
   memcpy(Buffer::Data(buff) + 32, wrap->ticket_key_aes_, 16);
+#else
+  if (SSL_CTX_set_tlsext_ticket_keys(wrap->ctx_.get(),
+                                     Buffer::Data(args[0]),
+                                     Buffer::Length(args[0])) != 1) {
+    return env->ThrowError("Failed to fetch tls ticket keys");
+  }
+#endif
 
   args.GetReturnValue().Set(buff);
 #endif  // !def(OPENSSL_NO_TLSEXT) && def(SSL_CTX_get_tlsext_ticket_keys)
@@ -1506,6 +1727,14 @@ void SecureContext::SetTicketKeys(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::SetFreeListLength(const FunctionCallbackInfo<Value>& args) {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  // |freelist_max_len| was removed in OpenSSL 1.1.0. In that version OpenSSL
+  // mallocs and frees buffers directly, without the use of a freelist.
+  SecureContext* wrap;
+  ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
+
+  wrap->ctx_->freelist_max_len = args[0]->Int32Value();
+#endif
 }
 
 
@@ -1608,6 +1837,7 @@ int SecureContext::TicketKeyCallback(SSL* ssl,
 }
 
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 int SecureContext::TicketCompatibilityCallback(SSL* ssl,
                                                unsigned char* name,
                                                unsigned char* iv,
@@ -1642,6 +1872,7 @@ int SecureContext::TicketCompatibilityCallback(SSL* ssl,
   }
   return 1;
 }
+#endif
 
 
 void SecureContext::CtxGetter(const FunctionCallbackInfo<Value>& info) {
@@ -1719,11 +1950,19 @@ void SSLWrap<Base>::ConfigureSecureContext(SecureContext* sc) {
 }
 
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+template <class Base>
+SSL_SESSION* SSLWrap<Base>::GetSessionCallback(SSL* s,
+                                               unsigned char* key,
+                                               int len,
+                                               int* copy) {
+#else
 template <class Base>
 SSL_SESSION* SSLWrap<Base>::GetSessionCallback(SSL* s,
                                                const unsigned char* key,
                                                int len,
                                                int* copy) {
+#endif
   Base* w = static_cast<Base*>(SSL_get_app_data(s));
 
   *copy = 0;
@@ -2488,6 +2727,7 @@ void SSLWrap<Base>::GetEphemeralKeyInfo(
             .Check();
         break;
       case EVP_PKEY_EC:
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
       case EVP_PKEY_X25519:
       case EVP_PKEY_X448:
         {
@@ -2510,6 +2750,21 @@ void SSLWrap<Base>::GetEphemeralKeyInfo(
                                  EVP_PKEY_bits(key.get()))).Check();
         }
         break;
+#else
+        {
+          EC_KEY* ec = EVP_PKEY_get1_EC_KEY(key.get());
+          int nid = EC_GROUP_get_curve_name(EC_KEY_get0_group(ec));
+          EC_KEY_free(ec);
+          info->Set(context, env->type_string(),
+                    FIXED_ONE_BYTE_STRING(env->isolate(), "ECDH")).Check();
+          info->Set(context, env->name_string(),
+                    OneByteString(args.GetIsolate(),
+                                  OBJ_nid2sn(nid))).Check();
+          info->Set(context, env->size_string(),
+                    Integer::New(env->isolate(),
+                                  EVP_PKEY_bits(key.get()))).Check();
+         }
+#endif
       default:
         break;
     }
@@ -3735,12 +3990,15 @@ Local<Value> KeyObject::GetAsymmetricKeyType() const {
   switch (EVP_PKEY_id(this->asymmetric_key_.get())) {
   case EVP_PKEY_RSA:
     return env()->crypto_rsa_string();
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   case EVP_PKEY_RSA_PSS:
     return env()->crypto_rsa_pss_string();
+#endif
   case EVP_PKEY_DSA:
     return env()->crypto_dsa_string();
   case EVP_PKEY_EC:
     return env()->crypto_ec_string();
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   case EVP_PKEY_ED25519:
     return env()->crypto_ed25519_string();
   case EVP_PKEY_ED448:
@@ -3749,6 +4007,7 @@ Local<Value> KeyObject::GetAsymmetricKeyType() const {
     return env()->crypto_x25519_string();
   case EVP_PKEY_X448:
     return env()->crypto_x448_string();
+#endif
   default:
     return Undefined(env()->isolate());
   }
@@ -4044,10 +4303,10 @@ bool CipherBase::InitAuthenticated(const char* cipher_type, int iv_len,
   CHECK(IsAuthenticatedMode());
   MarkPopErrorOnReturn mark_pop_error_on_return;
 
-  if (!EVP_CIPHER_CTX_ctrl(ctx_.get(),
-                           EVP_CTRL_AEAD_SET_IVLEN,
-                           iv_len,
-                           nullptr)) {
+  // TODO(tniessen) Use EVP_CTRL_AEAD_SET_IVLEN when migrating to OpenSSL 1.1.0
+  static_assert(EVP_CTRL_CCM_SET_IVLEN == EVP_CTRL_GCM_SET_IVLEN,
+                "OpenSSL constants differ between GCM and CCM");
+  if (!EVP_CIPHER_CTX_ctrl(ctx_.get(), EVP_CTRL_GCM_SET_IVLEN, iv_len, nullptr)) {
     env()->ThrowError("Invalid IV length");
     return false;
   }
@@ -4395,8 +4654,12 @@ bool CipherBase::Final(AllocatedBuffer* out) {
         CHECK(mode == EVP_CIPH_GCM_MODE);
         auth_tag_len_ = sizeof(auth_tag_);
       }
-      CHECK_EQ(1, EVP_CIPHER_CTX_ctrl(ctx_.get(), EVP_CTRL_AEAD_GET_TAG,
-                      auth_tag_len_,
+//      CHECK_EQ(1, EVP_CIPHER_CTX_ctrl(ctx_.get(), EVP_CTRL_AEAD_GET_TAG,
+//                      auth_tag_len_,
+      // TOOD(tniessen) Use EVP_CTRL_AEAP_GET_TAG in OpenSSL 1.1.0
+      static_assert(EVP_CTRL_CCM_GET_TAG == EVP_CTRL_GCM_GET_TAG,
+                    "OpenSSL constants differ between GCM and CCM");
+      CHECK_EQ(1, EVP_CIPHER_CTX_ctrl(ctx_.get(), EVP_CTRL_GCM_GET_TAG, auth_tag_len_,
                       reinterpret_cast<unsigned char*>(auth_tag_)));
     }
   }
@@ -4707,12 +4970,14 @@ void Hash::HashDigest(const FunctionCallbackInfo<Value>& args) {
 
 SignBase::Error SignBase::Init(const char* sign_type) {
   CHECK_NULL(mdctx_);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   // Historically, "dss1" and "DSS1" were DSA aliases for SHA-1
   // exposed through the public API.
   if (strcmp(sign_type, "dss1") == 0 ||
       strcmp(sign_type, "DSS1") == 0) {
     sign_type = "SHA1";
   }
+#endif
   const EVP_MD* md = EVP_get_digestbyname(sign_type);
   if (md == nullptr)
     return kSignUnknownDigest;
@@ -4780,6 +5045,7 @@ void SignBase::CheckThrow(SignBase::Error error) {
 static bool ApplyRSAOptions(const ManagedEVPPKey& pkey,
                             EVP_PKEY_CTX* pkctx,
                             int padding,
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
                             const Maybe<int>& salt_len) {
   if (EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA ||
       EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA2 ||
@@ -4788,6 +5054,15 @@ static bool ApplyRSAOptions(const ManagedEVPPKey& pkey,
       return false;
     if (padding == RSA_PKCS1_PSS_PADDING && salt_len.IsJust()) {
       if (EVP_PKEY_CTX_set_rsa_pss_saltlen(pkctx, salt_len.FromJust()) <= 0)
+#else
+                            int salt_len) {
+  if (EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA ||
+      EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA2) {
+    if (EVP_PKEY_CTX_set_rsa_padding(pkctx, padding) <= 0)
+      return false;
+    if (padding == RSA_PKCS1_PSS_PADDING) {
+      if (EVP_PKEY_CTX_set_rsa_pss_saltlen(pkctx, salt_len) <= 0)
+#endif
         return false;
     }
   }
@@ -4838,16 +5113,19 @@ void Sign::SignUpdate(const FunctionCallbackInfo<Value>& args) {
   sign->CheckThrow(err);
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 static int GetDefaultSignPadding(const ManagedEVPPKey& key) {
   return EVP_PKEY_id(key.get()) == EVP_PKEY_RSA_PSS ? RSA_PKCS1_PSS_PADDING :
                                                       RSA_PKCS1_PADDING;
 }
+#endif
 
 static AllocatedBuffer Node_SignFinal(Environment* env,
                                       EVPMDPointer&& mdctx,
                                       const ManagedEVPPKey& pkey,
                                       int padding,
-                                      Maybe<int> pss_salt_len) {
+                                      int pss_salt_len) {
+                                      // Maybe<int> pss_salt_len) {
   unsigned char m[EVP_MAX_MD_SIZE];
   unsigned int m_len;
 
@@ -4902,7 +5180,8 @@ static inline bool ValidateDSAParameters(EVP_PKEY* key) {
 Sign::SignResult Sign::SignFinal(
     const ManagedEVPPKey& pkey,
     int padding,
-    const Maybe<int>& salt_len) {
+    int salt_len) {
+    // const Maybe<int>& salt_len) {
   if (!mdctx_)
     return SignResult(kSignNotInitialised);
 
@@ -4929,6 +5208,7 @@ void Sign::SignFinal(const FunctionCallbackInfo<Value>& args) {
   if (!key)
     return;
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   int padding = GetDefaultSignPadding(key);
   if (!args[offset]->IsUndefined()) {
     CHECK(args[offset]->IsInt32());
@@ -4940,6 +5220,13 @@ void Sign::SignFinal(const FunctionCallbackInfo<Value>& args) {
     CHECK(args[offset + 1]->IsInt32());
     salt_len = Just<int>(args[offset + 1].As<Int32>()->Value());
   }
+#else
+  CHECK(args[offset]->IsInt32());
+  int padding = args[offset].As<Int32>()->Value();
+
+  CHECK(args[offset + 1]->IsInt32());
+  int salt_len = args[offset + 1].As<Int32>()->Value();
+#endif
 
   SignResult ret = sign->SignFinal(
       key,
@@ -4976,6 +5263,7 @@ void SignOneShot(const FunctionCallbackInfo<Value>& args) {
       return CheckThrow(env, SignBase::Error::kSignUnknownDigest);
   }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   int rsa_padding = GetDefaultSignPadding(key);
   if (!args[offset + 2]->IsUndefined()) {
     CHECK(args[offset + 2]->IsInt32());
@@ -4987,6 +5275,13 @@ void SignOneShot(const FunctionCallbackInfo<Value>& args) {
     CHECK(args[offset + 3]->IsInt32());
     rsa_salt_len = Just<int>(args[offset + 3].As<Int32>()->Value());
   }
+#else
+  CHECK(args[offset + 2]->IsInt32());
+  int rsa_padding = args[offset + 2].As<Int32>()->Value();
+
+  CHECK(args[offset + 3]->IsInt32());
+  int rsa_salt_len = args[offset + 3].As<Int32>()->Value();
+#endif
 
   EVP_PKEY_CTX* pkctx = nullptr;
   EVPMDPointer mdctx(EVP_MD_CTX_new());
@@ -5064,7 +5359,8 @@ SignBase::Error Verify::VerifyFinal(const ManagedEVPPKey& pkey,
                                     const char* sig,
                                     int siglen,
                                     int padding,
-                                    const Maybe<int>& saltlen,
+                                    int saltlen,
+                                    //const Maybe<int>& saltlen,
                                     bool* verify_result) {
   if (!mdctx_)
     return kSignNotInitialised;
@@ -5108,6 +5404,7 @@ void Verify::VerifyFinal(const FunctionCallbackInfo<Value>& args) {
 
   ArrayBufferViewContents<char> hbuf(args[offset]);
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   int padding = GetDefaultSignPadding(pkey);
   if (!args[offset + 1]->IsUndefined()) {
     CHECK(args[offset + 1]->IsInt32());
@@ -5119,6 +5416,13 @@ void Verify::VerifyFinal(const FunctionCallbackInfo<Value>& args) {
     CHECK(args[offset + 2]->IsInt32());
     salt_len = Just<int>(args[offset + 2].As<Int32>()->Value());
   }
+#else
+  CHECK(args[offset + 1]->IsInt32());
+  int padding = args[offset + 1].As<Int32>()->Value();
+
+  CHECK(args[offset + 2]->IsInt32());
+  int salt_len = args[offset + 2].As<Int32>()->Value();
+#endif
 
   bool verify_result;
   Error err = verify->VerifyFinal(pkey, hbuf.data(), hbuf.length(), padding,
@@ -5151,6 +5455,7 @@ void VerifyOneShot(const FunctionCallbackInfo<Value>& args) {
       return CheckThrow(env, SignBase::Error::kSignUnknownDigest);
   }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   int rsa_padding = GetDefaultSignPadding(key);
   if (!args[offset + 3]->IsUndefined()) {
     CHECK(args[offset + 3]->IsInt32());
@@ -5162,6 +5467,13 @@ void VerifyOneShot(const FunctionCallbackInfo<Value>& args) {
     CHECK(args[offset + 4]->IsInt32());
     rsa_salt_len = Just<int>(args[offset + 4].As<Int32>()->Value());
   }
+#else
+  CHECK(args[offset + 3]->IsInt32());
+  int rsa_padding = args[offset + 3].As<Int32>()->Value();
+
+  CHECK(args[offset + 4]->IsInt32());
+  int rsa_salt_len = args[offset + 4].As<Int32>()->Value();
+#endif
 
   EVP_PKEY_CTX* pkctx = nullptr;
   EVPMDPointer mdctx(EVP_MD_CTX_new());
@@ -6176,6 +6488,7 @@ class RSAKeyPairGenerationConfig : public KeyPairGenerationConfig {
   const unsigned int exponent_;
 };
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 class RSAPSSKeyPairGenerationConfig : public RSAKeyPairGenerationConfig {
  public:
   RSAPSSKeyPairGenerationConfig(unsigned int modulus_bits,
@@ -6217,6 +6530,7 @@ class RSAPSSKeyPairGenerationConfig : public RSAKeyPairGenerationConfig {
   const EVP_MD* mgf1_md_;
   const int saltlen_;
 };
+#endif
 
 class DSAKeyPairGenerationConfig : public KeyPairGenerationConfig {
  public:
@@ -6292,6 +6606,7 @@ class ECKeyPairGenerationConfig : public KeyPairGenerationConfig {
   const int param_encoding_;
 };
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 class NidKeyPairGenerationConfig : public KeyPairGenerationConfig {
  public:
   explicit NidKeyPairGenerationConfig(int id) : id_(id) {}
@@ -6303,6 +6618,7 @@ class NidKeyPairGenerationConfig : public KeyPairGenerationConfig {
  private:
   const int id_;
 };
+#endif
 
 class GenerateKeyPairJob : public CryptoJob {
  public:
@@ -6447,6 +6763,7 @@ void GenerateKeyPairRSA(const FunctionCallbackInfo<Value>& args) {
   GenerateKeyPair(args, 2, std::move(config));
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 void GenerateKeyPairRSAPSS(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
@@ -6484,6 +6801,7 @@ void GenerateKeyPairRSAPSS(const FunctionCallbackInfo<Value>& args) {
                                         md, mgf1_md, saltlen));
   GenerateKeyPair(args, 5, std::move(config));
 }
+#endif
 
 void GenerateKeyPairDSA(const FunctionCallbackInfo<Value>& args) {
   CHECK(args[0]->IsUint32());
@@ -6515,6 +6833,7 @@ void GenerateKeyPairEC(const FunctionCallbackInfo<Value>& args) {
   GenerateKeyPair(args, 2, std::move(config));
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 void GenerateKeyPairNid(const FunctionCallbackInfo<Value>& args) {
   CHECK(args[0]->IsInt32());
   const int id = args[0].As<Int32>()->Value();
@@ -6522,6 +6841,7 @@ void GenerateKeyPairNid(const FunctionCallbackInfo<Value>& args) {
       new NidKeyPairGenerationConfig(id));
   GenerateKeyPair(args, 1, std::move(config));
 }
+#endif
 
 
 void GetSSLCiphers(const FunctionCallbackInfo<Value>& args) {
@@ -6545,6 +6865,7 @@ void GetSSLCiphers(const FunctionCallbackInfo<Value>& args) {
                            SSL_CIPHER_get_name(cipher))).Check();
   }
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   // TLSv1.3 ciphers aren't listed by EVP. There are only 5, we could just
   // document them, but since there are only 5, easier to just add them manually
   // and not have to explain their absence in the API docs. They are lower-cased
@@ -6562,6 +6883,7 @@ void GetSSLCiphers(const FunctionCallbackInfo<Value>& args) {
     arr->Set(env->context(),
              arr->Length(), OneByteString(args.GetIsolate(), name)).Check();
   }
+#endif
 
   args.GetReturnValue().Set(arr);
 }
@@ -6815,6 +7137,12 @@ void InitCryptoOnce() {
   SSL_library_init();
   OpenSSL_add_all_algorithms();
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  crypto_lock_init();
+  CRYPTO_set_locking_callback(crypto_lock_cb);
+  CRYPTO_THREADID_set_callback(crypto_threadid_cb);
+#endif
+
 #ifdef NODE_FIPS_MODE
   /* Override FIPS settings in cnf file, if needed. */
   unsigned long err = 0;  // NOLINT(runtime/int)
@@ -6936,14 +7264,18 @@ void Initialize(Local<Object> target,
 
   env->SetMethod(target, "pbkdf2", PBKDF2);
   env->SetMethod(target, "generateKeyPairRSA", GenerateKeyPairRSA);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   env->SetMethod(target, "generateKeyPairRSAPSS", GenerateKeyPairRSAPSS);
+#endif
   env->SetMethod(target, "generateKeyPairDSA", GenerateKeyPairDSA);
   env->SetMethod(target, "generateKeyPairEC", GenerateKeyPairEC);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   env->SetMethod(target, "generateKeyPairNid", GenerateKeyPairNid);
   NODE_DEFINE_CONSTANT(target, EVP_PKEY_ED25519);
   NODE_DEFINE_CONSTANT(target, EVP_PKEY_ED448);
   NODE_DEFINE_CONSTANT(target, EVP_PKEY_X25519);
   NODE_DEFINE_CONSTANT(target, EVP_PKEY_X448);
+#endif
   NODE_DEFINE_CONSTANT(target, OPENSSL_EC_NAMED_CURVE);
   NODE_DEFINE_CONSTANT(target, OPENSSL_EC_EXPLICIT_CURVE);
   NODE_DEFINE_CONSTANT(target, kKeyEncodingPKCS1);

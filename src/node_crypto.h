@@ -36,6 +36,26 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
+// OpenSSL backport shims
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+
+#define EVP_CTRL_AEAD_SET_TAG EVP_CTRL_CCM_SET_TAG
+#define EVP_MD_CTX_free EVP_MD_CTX_destroy
+#define EVP_MD_CTX_new EVP_MD_CTX_create
+
+#define OPENSSL_EC_EXPLICIT_CURVE 0x0
+
+inline void EVP_CIPHER_CTX_free(EVP_CIPHER_CTX* ctx) { EVP_CIPHER_CTX_cleanup(ctx); }
+inline void HMAC_CTX_free(HMAC_CTX* ctx) { if (ctx == nullptr) { return; } HMAC_CTX_cleanup(ctx); free(ctx); }
+inline void OPENSSL_clear_free(void* ptr, size_t len) { OPENSSL_cleanse(ptr, len); OPENSSL_free(ptr); }
+
+inline int BN_bn2binpad(const BIGNUM* a, unsigned char *to, int tolen) {
+    if (tolen < 0) { return -1; }
+    OPENSSL_cleanse(to, tolen);
+    return BN_bn2bin(a, to);
+}
+#endif // OPENSSL_VERSION_NUMBER < 0x10100000L
+
 namespace node {
 namespace crypto {
 
@@ -132,10 +152,12 @@ class SecureContext : public BaseObject {
       const v8::FunctionCallbackInfo<v8::Value>& args);
   static void SetSessionTimeout(
       const v8::FunctionCallbackInfo<v8::Value>& args);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   static void SetMinProto(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void SetMaxProto(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void GetMinProto(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void GetMaxProto(const v8::FunctionCallbackInfo<v8::Value>& args);
+#endif
   static void Close(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void LoadPKCS12(const v8::FunctionCallbackInfo<v8::Value>& args);
 #ifndef OPENSSL_NO_ENGINE
@@ -230,10 +252,17 @@ class SSLWrap {
   static void ConfigureSecureContext(SecureContext* sc);
   static void AddMethods(Environment* env, v8::Local<v8::FunctionTemplate> t);
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  static SSL_SESSION* GetSessionCallback(SSL* s,
+                                         unsigned char* key,
+                                         int len,
+                                         int* copy);
+#else
   static SSL_SESSION* GetSessionCallback(SSL* s,
                                          const unsigned char* key,
                                          int len,
                                          int* copy);
+#endif
   static int NewSessionCallback(SSL* s, SSL_SESSION* sess);
   static void KeylogCallback(const SSL* s, const char* line);
   static void OnClientHello(void* arg,
@@ -660,7 +689,8 @@ class Sign : public SignBase {
   SignResult SignFinal(
       const ManagedEVPPKey& pkey,
       int padding,
-      const v8::Maybe<int>& saltlen);
+      int saltlen);
+      // const v8::Maybe<int>& saltlen);
 
  protected:
   static void New(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -681,7 +711,8 @@ class Verify : public SignBase {
                     const char* sig,
                     int siglen,
                     int padding,
-                    const v8::Maybe<int>& saltlen,
+                    int saltlen,
+                    //const v8::Maybe<int>& saltlen,
                     bool* verify_result);
 
  protected:

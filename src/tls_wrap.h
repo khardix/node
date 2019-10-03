@@ -177,7 +177,9 @@ class TLSWrap : public AsyncWrap,
   AllocatedBuffer pending_cleartext_input_;
   size_t write_size_ = 0;
   WriteWrap* current_write_ = nullptr;
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   bool in_dowrite_ = false;
+#endif
   WriteWrap* current_empty_write_ = nullptr;
   bool write_callback_scheduled_ = false;
   bool started_ = false;
