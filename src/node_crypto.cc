@@ -200,6 +200,22 @@ static int DH_set0_key(DH* dh, BIGNUM* pub_key, BIGNUM* priv_key) {
   return 1;
 }
 
+static int EC_GROUP_order_bits(const EC_GROUP *group) {
+  int num_bits = 0;
+  BIGNUM *order = BN_new();
+  BN_CTX *ctx = BN_CTX_new();
+  if (order == nullptr || ctx == nullptr) { goto end; }
+
+  if (EC_GROUP_get_order(group, order, ctx) != 1) { goto end; }
+  num_bits = BN_num_bits(order);
+
+end:
+  BN_CTX_free(ctx), ctx = nullptr;
+  BN_free(order), order = nullptr;
+
+  return num_bits;
+}
+
 static const SSL_METHOD* TLS_method() { return SSLv23_method(); }
 
 static void SSL_SESSION_get0_ticket(const SSL_SESSION* s,
