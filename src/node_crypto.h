@@ -58,10 +58,14 @@
 
 inline void EVP_CIPHER_CTX_free(EVP_CIPHER_CTX* ctx) { EVP_CIPHER_CTX_cleanup(ctx); }
 inline void HMAC_CTX_free(HMAC_CTX* ctx) { if (ctx == nullptr) { return; } HMAC_CTX_cleanup(ctx); free(ctx); }
-inline void OPENSSL_clear_free(void* ptr, size_t len) { OPENSSL_cleanse(ptr, len); OPENSSL_free(ptr); }
+inline void OPENSSL_clear_free(void* ptr, size_t len) {
+  if (ptr == nullptr) { return; }
+  OPENSSL_cleanse(ptr, len);
+  OPENSSL_free(ptr);
+}
 
 inline int BN_bn2binpad(const BIGNUM* a, unsigned char *to, int tolen) {
-    if (tolen < 0) { return -1; }
+    if (tolen < 0 || to == nullptr) { return -1; }
     OPENSSL_cleanse(to, tolen);
     return BN_bn2bin(a, to);
 }
