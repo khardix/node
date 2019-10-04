@@ -528,10 +528,12 @@ EnvironmentOptionsParser::EnvironmentOptionsParser() {
             "set default TLS minimum to TLSv1.2 (default: TLSv1.2)",
             &EnvironmentOptions::tls_min_v1_2,
             kAllowedInEnvironment);
+#ifdef TLS1_3_VERSION
   AddOption("--tls-min-v1.3",
             "set default TLS minimum to TLSv1.3 (default: TLSv1.2)",
             &EnvironmentOptions::tls_min_v1_3,
             kAllowedInEnvironment);
+#endif // TLS1_3_VERSION
   AddOption("--tls-max-v1.2",
             "set default TLS maximum to TLSv1.2 (default: TLSv1.3)",
             &EnvironmentOptions::tls_max_v1_2,
@@ -540,10 +542,12 @@ EnvironmentOptionsParser::EnvironmentOptionsParser() {
   // - 11.x and below: TLS1.3 is opt-in with --tls-max-v1.3
   // - 12.x: TLS1.3 is opt-out with --tls-max-v1.2
   // In either case, support both options they are uniformly available.
+#ifdef TLS1_3_VERSION
   AddOption("--tls-max-v1.3",
             "set default TLS maximum to TLSv1.3 (default: TLSv1.3)",
             &EnvironmentOptions::tls_max_v1_3,
             kAllowedInEnvironment);
+#endif // TLS1_3_VERSION
 }
 
 PerIsolateOptionsParser::PerIsolateOptionsParser(
