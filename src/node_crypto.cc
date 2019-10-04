@@ -1300,7 +1300,6 @@ void SecureContext::SetCipherSuites(const FunctionCallbackInfo<Value>& args) {
 
 
 void SecureContext::SetCiphers(const FunctionCallbackInfo<Value>& args) {
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   SecureContext* sc;
   ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   Environment* env = sc->env();
@@ -1309,6 +1308,7 @@ void SecureContext::SetCiphers(const FunctionCallbackInfo<Value>& args) {
   CHECK_EQ(args.Length(), 1);
   CHECK(args[0]->IsString());
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   const node::Utf8Value ciphers(args.GetIsolate(), args[0]);
   if (!SSL_CTX_set_cipher_list(sc->ctx_.get(), *ciphers)) {
     unsigned long err = ERR_get_error();  // NOLINT(runtime/int)
@@ -1325,8 +1325,6 @@ void SecureContext::SetCiphers(const FunctionCallbackInfo<Value>& args) {
       return;
     }
 #else
-  THROW_AND_RETURN_IF_NOT_STRING(env, args[0], "Ciphers");
-
   // Note: set_ciphersuites() is for TLSv1.3 and was introduced in openssl
   // 1.1.1, set_cipher_list() is for TLSv1.2 and earlier.
   //
@@ -1689,7 +1687,7 @@ void SecureContext::GetTicketKeys(const FunctionCallbackInfo<Value>& args) {
   if (SSL_CTX_set_tlsext_ticket_keys(wrap->ctx_.get(),
                                      Buffer::Data(args[0]),
                                      Buffer::Length(args[0])) != 1) {
-    return env->ThrowError("Failed to fetch tls ticket keys");
+    return wrap->env()->ThrowError("Failed to fetch tls ticket keys");
   }
 #endif
 
@@ -1733,7 +1731,7 @@ void SecureContext::SetFreeListLength(const FunctionCallbackInfo<Value>& args) {
   SecureContext* wrap;
   ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
 
-  wrap->ctx_->freelist_max_len = args[0]->Int32Value();
+  wrap->ctx_->freelist_max_len = args[0].As<Int32>()->Value();
 #endif
 }
 
