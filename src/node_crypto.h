@@ -49,7 +49,12 @@
 #define EVP_MD_CTX_free EVP_MD_CTX_destroy
 #define EVP_MD_CTX_new EVP_MD_CTX_create
 
-#define OPENSSL_EC_EXPLICIT_CURVE 0x0
+// Values from upstream
+#define OPENSSL_EC_EXPLICIT_CURVE           0x0
+#define NID_chacha20_poly1305               1018
+#define EVP_MD_FLAG_XOF                     0x0002
+#define EVP_F_EVP_DIGESTFINALXOF            0
+#define EVP_R_NOT_XOF_OR_INVALID_LENGTH     178
 
 inline void EVP_CIPHER_CTX_free(EVP_CIPHER_CTX* ctx) { EVP_CIPHER_CTX_cleanup(ctx); }
 inline void HMAC_CTX_free(HMAC_CTX* ctx) { if (ctx == nullptr) { return; } HMAC_CTX_cleanup(ctx); free(ctx); }

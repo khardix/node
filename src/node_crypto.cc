@@ -55,6 +55,7 @@
 #include <cstring>
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -214,6 +215,36 @@ end:
   BN_free(order), order = nullptr;
 
   return num_bits;
+}
+
+static int EVP_PKEY_up_ref(EVP_PKEY *pkey) {
+  int refcount = std::atomic_fetch_add_explicit(
+    reinterpret_cast<std::atomic<int>*>(&pkey->references),
+    1,
+    std::memory_order_relaxed
+  ) + 1;
+  return (refcount > 1) ? 1 : 0;
+}
+static unsigned long EVP_MD_meth_get_flags(const EVP_MD *md) {
+  return md->flags;
+}
+static int EVP_DigestSign(
+  EVP_MD_CTX *ctx, unsigned char *sigret, size_t *siglen,
+  const unsigned char *tbs, size_t tbslen)
+{
+  if (sigret != nullptr && EVP_DigestSignUpdate(ctx, tbs, tbslen) <= 0) {
+    return 0;
+  }
+  return EVP_DigestSignFinal(ctx, sigret, siglen);
+}
+static int EVP_DigestVerify(
+  EVP_MD_CTX *ctx, const unsigned char *sigret,
+  size_t siglen, const unsigned char *tbs, size_t tbslen)
+{
+  if (EVP_DigestVerifyUpdate(ctx, tbs, tbslen) <= 0) {
+    return -1;
+  }
+  return EVP_DigestVerifyFinal(ctx, sigret, siglen);
 }
 
 static const SSL_METHOD* TLS_method() { return SSLv23_method(); }
@@ -4953,8 +4984,12 @@ void Hash::HashDigest(const FunctionCallbackInfo<Value>& args) {
       ret = EVP_DigestFinal_ex(hash->mdctx_.get(), hash->md_value_,
                                &hash->md_len_);
     } else {
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
       ret = EVP_DigestFinalXOF(hash->mdctx_.get(), hash->md_value_,
                                hash->md_len_);
+#else
+      return env->ThrowError("Unsupported XOF digest");
+#endif  // OPENSSL_VERSION_NUMBER >= 0x10100000L
     }
 
     if (ret != 1) {
