@@ -323,7 +323,7 @@ void TLSWrap::EncOut() {
       }
     }
 #else
-    if (pending_cleartext_input_.empty())
+    if (pending_cleartext_input_.size() == 0)
       InvokeQueued(0);
 #endif
     return;
@@ -915,11 +915,13 @@ void TLSWrap::EnableSessionCallbacks(
 
 void TLSWrap::EnableKeylogCallback(
     const FunctionCallbackInfo<Value>& args) {
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   TLSWrap* wrap;
   ASSIGN_OR_RETURN_UNWRAP(&wrap, args.Holder());
   CHECK_NOT_NULL(wrap->sc_);
   SSL_CTX_set_keylog_callback(wrap->sc_->ctx_.get(),
       SSLWrap<TLSWrap>::KeylogCallback);
+#endif  // OPENSSL_VERSION_NUMBER >= 0x10100000L
 }
 
 // Check required capabilities were not excluded from the OpenSSL build:
