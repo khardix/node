@@ -5094,24 +5094,19 @@ void SignBase::CheckThrow(SignBase::Error error) {
 static bool ApplyRSAOptions(const ManagedEVPPKey& pkey,
                             EVP_PKEY_CTX* pkctx,
                             int padding,
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
                             const Maybe<int>& salt_len) {
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   if (EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA ||
       EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA2 ||
       EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA_PSS) {
+#else
+  if (EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA ||
+      EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA2) {
+#endif
     if (EVP_PKEY_CTX_set_rsa_padding(pkctx, padding) <= 0)
       return false;
     if (padding == RSA_PKCS1_PSS_PADDING && salt_len.IsJust()) {
       if (EVP_PKEY_CTX_set_rsa_pss_saltlen(pkctx, salt_len.FromJust()) <= 0)
-#else
-                            int salt_len) {
-  if (EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA ||
-      EVP_PKEY_id(pkey.get()) == EVP_PKEY_RSA2) {
-    if (EVP_PKEY_CTX_set_rsa_padding(pkctx, padding) <= 0)
-      return false;
-    if (padding == RSA_PKCS1_PSS_PADDING) {
-      if (EVP_PKEY_CTX_set_rsa_pss_saltlen(pkctx, salt_len) <= 0)
-#endif
         return false;
     }
   }
@@ -5162,19 +5157,20 @@ void Sign::SignUpdate(const FunctionCallbackInfo<Value>& args) {
   sign->CheckThrow(err);
 }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-static int GetDefaultSignPadding(const ManagedEVPPKey& key) {
+static int GetDefaultSignPadding([[maybe_unused]] const ManagedEVPPKey& key) {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  return RSA_PKCS1_PADDING;
+#else
   return EVP_PKEY_id(key.get()) == EVP_PKEY_RSA_PSS ? RSA_PKCS1_PSS_PADDING :
                                                       RSA_PKCS1_PADDING;
+#endif  // OPENSSL_VERSION_NUMBER < 0x10100000L
 }
-#endif
 
 static AllocatedBuffer Node_SignFinal(Environment* env,
                                       EVPMDPointer&& mdctx,
                                       const ManagedEVPPKey& pkey,
                                       int padding,
-                                      int pss_salt_len) {
-                                      // Maybe<int> pss_salt_len) {
+                                      Maybe<int> pss_salt_len) {
   unsigned char m[EVP_MAX_MD_SIZE];
   unsigned int m_len;
 
@@ -5229,8 +5225,7 @@ static inline bool ValidateDSAParameters(EVP_PKEY* key) {
 Sign::SignResult Sign::SignFinal(
     const ManagedEVPPKey& pkey,
     int padding,
-    int salt_len) {
-    // const Maybe<int>& salt_len) {
+    const Maybe<int>& salt_len) {
   if (!mdctx_)
     return SignResult(kSignNotInitialised);
 
@@ -5257,7 +5252,6 @@ void Sign::SignFinal(const FunctionCallbackInfo<Value>& args) {
   if (!key)
     return;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   int padding = GetDefaultSignPadding(key);
   if (!args[offset]->IsUndefined()) {
     CHECK(args[offset]->IsInt32());
@@ -5269,13 +5263,6 @@ void Sign::SignFinal(const FunctionCallbackInfo<Value>& args) {
     CHECK(args[offset + 1]->IsInt32());
     salt_len = Just<int>(args[offset + 1].As<Int32>()->Value());
   }
-#else
-  CHECK(args[offset]->IsInt32());
-  int padding = args[offset].As<Int32>()->Value();
-
-  CHECK(args[offset + 1]->IsInt32());
-  int salt_len = args[offset + 1].As<Int32>()->Value();
-#endif
 
   SignResult ret = sign->SignFinal(
       key,
@@ -5312,7 +5299,6 @@ void SignOneShot(const FunctionCallbackInfo<Value>& args) {
       return CheckThrow(env, SignBase::Error::kSignUnknownDigest);
   }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   int rsa_padding = GetDefaultSignPadding(key);
   if (!args[offset + 2]->IsUndefined()) {
     CHECK(args[offset + 2]->IsInt32());
@@ -5324,13 +5310,6 @@ void SignOneShot(const FunctionCallbackInfo<Value>& args) {
     CHECK(args[offset + 3]->IsInt32());
     rsa_salt_len = Just<int>(args[offset + 3].As<Int32>()->Value());
   }
-#else
-  CHECK(args[offset + 2]->IsInt32());
-  int rsa_padding = args[offset + 2].As<Int32>()->Value();
-
-  CHECK(args[offset + 3]->IsInt32());
-  int rsa_salt_len = args[offset + 3].As<Int32>()->Value();
-#endif
 
   EVP_PKEY_CTX* pkctx = nullptr;
   EVPMDPointer mdctx(EVP_MD_CTX_new());
@@ -5408,8 +5387,7 @@ SignBase::Error Verify::VerifyFinal(const ManagedEVPPKey& pkey,
                                     const char* sig,
                                     int siglen,
                                     int padding,
-                                    int saltlen,
-                                    //const Maybe<int>& saltlen,
+                                    const Maybe<int>& saltlen,
                                     bool* verify_result) {
   if (!mdctx_)
     return kSignNotInitialised;
@@ -5453,7 +5431,6 @@ void Verify::VerifyFinal(const FunctionCallbackInfo<Value>& args) {
 
   ArrayBufferViewContents<char> hbuf(args[offset]);
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   int padding = GetDefaultSignPadding(pkey);
   if (!args[offset + 1]->IsUndefined()) {
     CHECK(args[offset + 1]->IsInt32());
@@ -5465,13 +5442,6 @@ void Verify::VerifyFinal(const FunctionCallbackInfo<Value>& args) {
     CHECK(args[offset + 2]->IsInt32());
     salt_len = Just<int>(args[offset + 2].As<Int32>()->Value());
   }
-#else
-  CHECK(args[offset + 1]->IsInt32());
-  int padding = args[offset + 1].As<Int32>()->Value();
-
-  CHECK(args[offset + 2]->IsInt32());
-  int salt_len = args[offset + 2].As<Int32>()->Value();
-#endif
 
   bool verify_result;
   Error err = verify->VerifyFinal(pkey, hbuf.data(), hbuf.length(), padding,
@@ -5504,7 +5474,6 @@ void VerifyOneShot(const FunctionCallbackInfo<Value>& args) {
       return CheckThrow(env, SignBase::Error::kSignUnknownDigest);
   }
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   int rsa_padding = GetDefaultSignPadding(key);
   if (!args[offset + 3]->IsUndefined()) {
     CHECK(args[offset + 3]->IsInt32());
@@ -5516,13 +5485,6 @@ void VerifyOneShot(const FunctionCallbackInfo<Value>& args) {
     CHECK(args[offset + 4]->IsInt32());
     rsa_salt_len = Just<int>(args[offset + 4].As<Int32>()->Value());
   }
-#else
-  CHECK(args[offset + 3]->IsInt32());
-  int rsa_padding = args[offset + 3].As<Int32>()->Value();
-
-  CHECK(args[offset + 4]->IsInt32());
-  int rsa_salt_len = args[offset + 4].As<Int32>()->Value();
-#endif
 
   EVP_PKEY_CTX* pkctx = nullptr;
   EVPMDPointer mdctx(EVP_MD_CTX_new());
