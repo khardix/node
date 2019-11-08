@@ -223,7 +223,7 @@ server.listen(0, common.mustCall(function() {
   }, onSecureConnect());
 })).unref();
 
-const errMessagePassword = /bad decrypt/;
+const errMessagePassword = /bad decrypt|bad password read/;
 
 // Missing passphrase
 assert.throws(function() {

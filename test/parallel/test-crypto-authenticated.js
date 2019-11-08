@@ -404,7 +404,7 @@ for (const test of TEST_CASES) {
 // Test that create(De|C)ipher(iv)? throws if the mode is CCM or OCB and no
 // authentication tag has been specified.
 {
-  for (const mode of ['ccm', 'ocb']) {
+  for (const mode of ['ccm']) {
     assert.throws(() => {
       crypto.createCipheriv(`aes-256-${mode}`,
                             'FxLKsqdmv0E9xrQhp0b1ZgI0K7JFZJM8',
@@ -564,7 +564,7 @@ for (const test of TEST_CASES) {
   const key = Buffer.from('0123456789abcdef', 'utf8');
   const iv = Buffer.from('0123456789ab', 'utf8');
 
-  for (const mode of ['gcm', 'ocb']) {
+  for (const mode of ['gcm']) {
     for (const authTagLength of mode === 'gcm' ? [undefined, 8] : [8]) {
       const cipher = crypto.createCipheriv(`aes-128-${mode}`, key, iv, {
         authTagLength
