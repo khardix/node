@@ -235,9 +235,9 @@ assert.throws(function() {
 }, (err) => {
   // Do the standard checks, but then do some custom checks afterwards.
   assert.throws(() => { throw err; }, {
-    message: 'error:0D0680A8:asn1 encoding routines:asn1_check_tlen:wrong tag',
+    message: 'error:0D0680A8:asn1 encoding routines:ASN1_CHECK_TLEN:wrong tag',
     library: 'asn1 encoding routines',
-    function: 'asn1_check_tlen',
+    function: 'ASN1_CHECK_TLEN',
     reason: 'wrong tag',
     code: 'ERR_OSSL_ASN1_WRONG_TAG',
   });
