@@ -1732,8 +1732,8 @@ void SecureContext::GetTicketKeys(const FunctionCallbackInfo<Value>& args) {
   memcpy(Buffer::Data(buff) + 32, wrap->ticket_key_aes_, 16);
 #else
   if (SSL_CTX_set_tlsext_ticket_keys(wrap->ctx_.get(),
-                                     Buffer::Data(args[0]),
-                                     Buffer::Length(args[0])) != 1) {
+                                     Buffer::Data(buff),
+                                     Buffer::Length(buff)) != 1) {
     return wrap->env()->ThrowError("Failed to fetch tls ticket keys");
   }
 #endif
