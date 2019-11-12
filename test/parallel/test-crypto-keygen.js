@@ -266,43 +266,6 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
 }
 
 {
-  // Test RSA-PSS.
-  generateKeyPair('rsa-pss', {
-    modulusLength: 512,
-    saltLength: 16,
-    hash: 'sha256',
-    mgf1Hash: 'sha256'
-  }, common.mustCall((err, publicKey, privateKey) => {
-    assert.ifError(err);
-
-    assert.strictEqual(publicKey.type, 'public');
-    assert.strictEqual(publicKey.asymmetricKeyType, 'rsa-pss');
-
-    assert.strictEqual(privateKey.type, 'private');
-    assert.strictEqual(privateKey.asymmetricKeyType, 'rsa-pss');
-
-    // Unlike RSA, RSA-PSS does not allow encryption.
-    assert.throws(() => {
-      testEncryptDecrypt(publicKey, privateKey);
-    }, /operation not supported for this keytype/);
-
-    // RSA-PSS also does not permit signing with PKCS1 padding.
-    assert.throws(() => {
-      testSignVerify({
-        key: publicKey,
-        padding: constants.RSA_PKCS1_PADDING
-      }, {
-        key: privateKey,
-        padding: constants.RSA_PKCS1_PADDING
-      });
-    }, /illegal or unsupported padding mode/);
-
-    // The padding should correctly default to RSA_PKCS1_PSS_PADDING now.
-    testSignVerify(publicKey, privateKey);
-  }));
-}
-
-{
   const privateKeyEncoding = {
     type: 'pkcs8',
     format: 'der'
@@ -962,23 +925,6 @@ const sec1EncExp = (cipher) => getRegExpForPEM('EC PRIVATE KEY', cipher);
   }, common.mustCall((err, publicKey, privateKey) => {
     assert.ifError(err);
   }));
-}
-
-// Test EdDSA key generation.
-{
-  if (!/^1\.1\.0/.test(process.versions.openssl)) {
-    ['ed25519', 'ed448', 'x25519', 'x448'].forEach((keyType) => {
-      generateKeyPair(keyType, common.mustCall((err, publicKey, privateKey) => {
-        assert.ifError(err);
-
-        assert.strictEqual(publicKey.type, 'public');
-        assert.strictEqual(publicKey.asymmetricKeyType, keyType);
-
-        assert.strictEqual(privateKey.type, 'private');
-        assert.strictEqual(privateKey.asymmetricKeyType, keyType);
-      }));
-    });
-  }
 }
 
 // Test invalid key encoding types.
