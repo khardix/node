@@ -221,21 +221,3 @@ crypto.pbkdf2Sync(new Float32Array(10), 'salt', 8, 8, 'sha256');
 crypto.pbkdf2Sync('pass', new Float32Array(10), 8, 8, 'sha256');
 crypto.pbkdf2Sync(new Float64Array(10), 'salt', 8, 8, 'sha256');
 crypto.pbkdf2Sync('pass', new Float64Array(10), 8, 8, 'sha256');
-
-assert.throws(
-  () => crypto.pbkdf2('pass', 'salt', 8, 8, 'md55', common.mustNotCall()),
-  {
-    code: 'ERR_CRYPTO_INVALID_DIGEST',
-    name: 'TypeError',
-    message: 'Invalid digest: md55'
-  }
-);
-
-assert.throws(
-  () => crypto.pbkdf2Sync('pass', 'salt', 8, 8, 'md55'),
-  {
-    code: 'ERR_CRYPTO_INVALID_DIGEST',
-    name: 'TypeError',
-    message: 'Invalid digest: md55'
-  }
-);

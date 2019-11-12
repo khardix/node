@@ -6314,9 +6314,24 @@ struct PBKDF2Job : public CryptoJob {
   }
 
   inline void DoThreadPoolWork() override {
-    auto salt_data = reinterpret_cast<const unsigned char*>(salt.data());
+    static const auto *empty = "";
+
+    auto pass_data = reinterpret_cast<const char *>(empty);
+    auto pass_size = int(0);
+    auto salt_data = reinterpret_cast<const unsigned char *>(empty);
+    auto salt_size = int(0);
+
+    if (pass.size() > 0) {
+      pass_data = pass.data();
+      pass_size = pass.size();
+    }
+    if (salt.size() > 0) {
+      salt_data = reinterpret_cast<const unsigned char *>(salt.data());
+      salt_size = salt.size();
+    }
+
     const bool ok =
-        PKCS5_PBKDF2_HMAC(pass.data(), pass.size(), salt_data, salt.size(),
+        PKCS5_PBKDF2_HMAC(pass_data, pass_size, salt_data, salt_size,
                           iteration_count, digest, keybuf_size, keybuf_data);
     success = Just(ok);
     Cleanse();
