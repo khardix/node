@@ -418,14 +418,6 @@ common.expectsError(
 }
 
 [
-  { private: fixtures.readKey('ed25519_private.pem', 'ascii'),
-    public: fixtures.readKey('ed25519_public.pem', 'ascii'),
-    algo: null,
-    sigLen: 64 },
-  { private: fixtures.readKey('ed448_private.pem', 'ascii'),
-    public: fixtures.readKey('ed448_public.pem', 'ascii'),
-    algo: null,
-    sigLen: 114 },
   { private: fixtures.readKey('rsa_private_2048.pem', 'ascii'),
     public: fixtures.readKey('rsa_public_2048.pem', 'ascii'),
     algo: 'sha1',
