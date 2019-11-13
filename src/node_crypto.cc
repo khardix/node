@@ -278,29 +278,76 @@ HMAC_CTX* HMAC_CTX_new() {
 // Disable all TLS version lower than the version argument
 int SSL_CTX_set_min_proto_version(SSL_CTX *ctx, int version) {
     switch (version) {
-        [[gnu::fallthrough]] case TLS1_2_VERSION:
+        case TLS1_2_VERSION:
             SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_1);
-        [[gnu::fallthrough]] case TLS1_1_VERSION:
+            [[fallthrough]];
+
+        case TLS1_1_VERSION:
             SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1);
-        [[gnu::fallthrough]] case TLS1_VERSION:
-            SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv3);
+            [[fallthrough]];
+
+        case TLS1_VERSION:
+            SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv3|SSL_OP_NO_SSLv2);
             return 1;
+
         default:
             return 0;  // unsupported
     }
 }
+// Extract minimum supported version. Should be inverse of the setter above.
+int SSL_CTX_get_min_proto_version(SSL_CTX *ctx) {
+  static const auto full_mask = SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1;
+
+  auto opts = SSL_CTX_get_options(ctx);
+
+  switch (opts & full_mask) {
+    case SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1:
+      return TLS1_2_VERSION;
+
+    case SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1:
+      return TLS1_1_VERSION;
+
+    case SSL_OP_NO_SSLv3:
+      return TLS1_VERSION;
+
+    default:
+      return 0;
+  }
+}
+
 // Disable all TLS version higher than the version argument
 int SSL_CTX_set_max_proto_version(SSL_CTX *ctx, int version) {
     switch (version) {
-        [[gnu::fallthrough]] case TLS1_VERSION:
+        case TLS1_VERSION:
             SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_1);
-        [[gnu::fallthrough]] case TLS1_1_VERSION:
+            [[fallthrough]];
+
+        case TLS1_1_VERSION:
             SSL_CTX_set_options(ctx, SSL_OP_NO_TLSv1_2);
-        [[gnu::fallthrough]] case TLS1_2_VERSION:
+            [[fallthrough]];
+
+        case TLS1_2_VERSION:
             return 1;
+
         default:
             return 0;  // unsupported
     }
+}
+// Extract maximum supported version. Should be inverse of the setter above.
+int SSL_CTX_get_max_proto_version(SSL_CTX *ctx) {
+  static const auto full_mask = SSL_OP_NO_TLSv1_1 | SSL_OP_NO_TLSv1_2;
+
+  auto opts = SSL_CTX_get_options(ctx);
+  switch (opts & full_mask) {
+    case SSL_OP_NO_TLSv1_1 | SSL_OP_NO_TLSv1_2:
+      return TLS1_VERSION;
+
+    case SSL_OP_NO_TLSv1_2:
+      return TLS1_1_VERSION;
+
+    default:
+      return 0;
+  }
 }
 
 #endif  // OPENSSL_VERSION_NUMBER < 0x10100000L
@@ -689,12 +736,10 @@ void SecureContext::Initialize(Environment* env, Local<Object> target) {
   env->SetProtoMethod(t, "setCiphers", SetCiphers);
   env->SetProtoMethod(t, "setECDHCurve", SetECDHCurve);
   env->SetProtoMethod(t, "setDHParam", SetDHParam);
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
   env->SetProtoMethod(t, "setMaxProto", SetMaxProto);
   env->SetProtoMethod(t, "setMinProto", SetMinProto);
   env->SetProtoMethod(t, "getMaxProto", GetMaxProto);
   env->SetProtoMethod(t, "getMinProto", GetMinProto);
-#endif
   env->SetProtoMethod(t, "setOptions", SetOptions);
   env->SetProtoMethod(t, "setSessionIdContext", SetSessionIdContext);
   env->SetProtoMethod(t, "setSessionTimeout", SetSessionTimeout);
@@ -816,36 +861,39 @@ void SecureContext::Init(const FunctionCallbackInfo<Value>& args) {
     } else if (strcmp(*sslmethod, "TLSv1_method") == 0) {
       min_version = TLS1_VERSION;
       max_version = TLS1_VERSION;
+      method = TLSv1_method();
     } else if (strcmp(*sslmethod, "TLSv1_server_method") == 0) {
       min_version = TLS1_VERSION;
       max_version = TLS1_VERSION;
-      method = SSLv23_server_method();
+      method = TLSv1_server_method();
     } else if (strcmp(*sslmethod, "TLSv1_client_method") == 0) {
       min_version = TLS1_VERSION;
       max_version = TLS1_VERSION;
-      method = SSLv23_client_method();
+      method = TLSv1_client_method();
     } else if (strcmp(*sslmethod, "TLSv1_1_method") == 0) {
       min_version = TLS1_1_VERSION;
       max_version = TLS1_1_VERSION;
+      method = TLSv1_1_method();
     } else if (strcmp(*sslmethod, "TLSv1_1_server_method") == 0) {
       min_version = TLS1_1_VERSION;
       max_version = TLS1_1_VERSION;
-      method = SSLv23_server_method();
+      method = TLSv1_1_server_method();
     } else if (strcmp(*sslmethod, "TLSv1_1_client_method") == 0) {
       min_version = TLS1_1_VERSION;
       max_version = TLS1_1_VERSION;
-      method = SSLv23_client_method();
+      method = TLSv1_1_client_method();
     } else if (strcmp(*sslmethod, "TLSv1_2_method") == 0) {
       min_version = TLS1_2_VERSION;
       max_version = TLS1_2_VERSION;
+      method = TLSv1_2_method();
     } else if (strcmp(*sslmethod, "TLSv1_2_server_method") == 0) {
       min_version = TLS1_2_VERSION;
       max_version = TLS1_2_VERSION;
-      method = SSLv23_server_method();
+      method = TLSv1_2_server_method();
     } else if (strcmp(*sslmethod, "TLSv1_2_client_method") == 0) {
       min_version = TLS1_2_VERSION;
       max_version = TLS1_2_VERSION;
-      method = SSLv23_client_method();
+      method = TLSv1_2_client_method();
     } else {
       const std::string msg("Unknown method: ");
       THROW_ERR_TLS_INVALID_PROTOCOL_METHOD(env, (msg + * sslmethod).c_str());
@@ -1470,7 +1518,6 @@ void SecureContext::SetDHParam(const FunctionCallbackInfo<Value>& args) {
 }
 
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 void SecureContext::SetMinProto(const FunctionCallbackInfo<Value>& args) {
   SecureContext* sc;
   ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
@@ -1519,7 +1566,6 @@ void SecureContext::GetMaxProto(const FunctionCallbackInfo<Value>& args) {
     SSL_CTX_get_max_proto_version(sc->ctx_.get());
   args.GetReturnValue().Set(static_cast<uint32_t>(version));
 }
-#endif
 
 
 void SecureContext::SetOptions(const FunctionCallbackInfo<Value>& args) {

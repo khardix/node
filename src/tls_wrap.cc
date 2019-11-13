@@ -123,7 +123,7 @@ void TLSWrap::InitSSL() {
   // re-call ClearIn() if SSL_read() returns SSL_ERROR_WANT_READ, so data can be
   // left sitting in the incoming enc_in_ and never get processed.
   // - https://wiki.openssl.org/index.php/TLS1.3#Non-application_data_records
- // SSL_set_mode(ssl_.get(), SSL_MODE_AUTO_RETRY);
+  SSL_set_mode(ssl_.get(), SSL_MODE_AUTO_RETRY);
 
   SSL_set_app_data(ssl_.get(), this);
   // Using InfoCallback isn't how we are supposed to check handshake progress:
@@ -254,7 +254,7 @@ void TLSWrap::SSLInfoCallback(const SSL* ssl_, int where, int ret) {
   // We need to check whether this is in a renegotiation state or not.
   if (where & SSL_CB_HANDSHAKE_DONE && !SSL_renegotiate_pending(ssl)) {
     Debug(c, "SSLInfoCallback(SSL_CB_HANDSHAKE_DONE);");
-    //CHECK(!SSL_renegotiate_pending(ssl));
+    CHECK(!SSL_renegotiate_pending(ssl));
     Local<Value> callback;
 
     c->established_ = true;
@@ -302,7 +302,6 @@ void TLSWrap::EncOut() {
   // No encrypted output ready to write to the underlying stream.
   if (BIO_pending(enc_out_) == 0) {
     Debug(this, "No pending encrypted output");
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
     if (pending_cleartext_input_.size() == 0) {
       if (!in_dowrite_) {
         Debug(this, "No pending cleartext input, not inside DoWrite()");
@@ -322,10 +321,6 @@ void TLSWrap::EncOut() {
         }, object());
       }
     }
-#else
-    if (pending_cleartext_input_.size() == 0)
-      InvokeQueued(0);
-#endif
     return;
   }
 
@@ -784,9 +779,9 @@ int TLSWrap::DoWrite(WriteWrap* w,
 
   // Write any encrypted/handshake output that may be ready.
   // Guard against sync call of current_write_->Done(), its unsupported.
-  //in_dowrite_ = true;
+  in_dowrite_ = true;
   EncOut();
-  //in_dowrite_ = false;
+  in_dowrite_ = false;
 
   return 0;
 }
@@ -921,7 +916,7 @@ void TLSWrap::EnableKeylogCallback(
   CHECK_NOT_NULL(wrap->sc_);
   SSL_CTX_set_keylog_callback(wrap->sc_->ctx_.get(),
       SSLWrap<TLSWrap>::KeylogCallback);
-#endif  // OPENSSL_VERSION_NUMBER >= 0x10100000L
+#endif // OPENSSL_VERSION_NUMBER >= 0x10100000L
 }
 
 // Check required capabilities were not excluded from the OpenSSL build:
