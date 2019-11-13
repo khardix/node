@@ -670,14 +670,6 @@ added: v12.0.0
 Set [`tls.DEFAULT_MAX_VERSION`][] to 'TLSv1.2'. Use to disable support for
 TLSv1.3.
 
-### `--tls-max-v1.3`
-<!-- YAML
-added: v12.0.0
--->
-
-Set default [`tls.DEFAULT_MAX_VERSION`][] to 'TLSv1.3'. Use to enable support
-for TLSv1.3.
-
 ### `--tls-min-v1.0`
 <!-- YAML
 added: v12.0.0
@@ -702,14 +694,6 @@ added: v12.2.0
 Set default [`tls.DEFAULT_MIN_VERSION`][] to 'TLSv1.2'. This is the default for
 12.x and later, but the option is supported for compatibility with older Node.js
 versions.
-
-### `--tls-min-v1.3`
-<!-- YAML
-added: v12.0.0
--->
-
-Set default [`tls.DEFAULT_MIN_VERSION`][] to 'TLSv1.3'. Use to disable support
-for TLSv1.2, which is not as secure as TLSv1.3.
 
 ### `--trace-deprecation`
 <!-- YAML
@@ -1042,11 +1026,9 @@ Node.js options that are allowed are:
 - `--title`
 - `--tls-cipher-list`
 - `--tls-max-v1.2`
-- `--tls-max-v1.3`
 - `--tls-min-v1.0`
 - `--tls-min-v1.1`
 - `--tls-min-v1.2`
-- `--tls-min-v1.3`
 - `--trace-deprecation`
 - `--trace-event-categories`
 - `--trace-event-file-pattern`
