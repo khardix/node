@@ -126,9 +126,9 @@ if (DEFAULT_MIN_VERSION === 'TLSv1.3') {
 
 if (DEFAULT_MIN_VERSION === 'TLSv1.2') {
   test(U, U, 'TLSv1_1_method', U, U, 'SSLv23_method',
-       U, 'ECONNRESET', 'ERR_SSL_UNSUPPORTED_PROTOCOL');
+       U, 'ECONNRESET', 'ERR_SSL_UNKNOWN_PROTOCOL');
   test(U, U, 'TLSv1_method', U, U, 'SSLv23_method',
-       U, 'ECONNRESET', 'ERR_SSL_UNSUPPORTED_PROTOCOL');
+       U, 'ECONNRESET', 'ERR_SSL_UNKNOWN_PROTOCOL');
   test(U, U, 'SSLv23_method', U, U, 'TLSv1_1_method',
        U, 'ERR_SSL_UNSUPPORTED_PROTOCOL', 'ERR_SSL_WRONG_VERSION_NUMBER');
   test(U, U, 'SSLv23_method', U, U, 'TLSv1_method',
@@ -138,7 +138,7 @@ if (DEFAULT_MIN_VERSION === 'TLSv1.2') {
 if (DEFAULT_MIN_VERSION === 'TLSv1.1') {
   test(U, U, 'TLSv1_1_method', U, U, 'SSLv23_method', 'TLSv1.1');
   test(U, U, 'TLSv1_method', U, U, 'SSLv23_method',
-       U, 'ECONNRESET', 'ERR_SSL_UNSUPPORTED_PROTOCOL');
+       U, 'ECONNRESET', 'ERR_SSL_UNKNOWN_PROTOCOL');
   test(U, U, 'SSLv23_method', U, U, 'TLSv1_1_method', 'TLSv1.1');
   test(U, U, 'SSLv23_method', U, U, 'TLSv1_method',
        U, 'ERR_SSL_UNSUPPORTED_PROTOCOL', 'ERR_SSL_WRONG_VERSION_NUMBER');
@@ -160,9 +160,9 @@ test(U, U, 'TLSv1_method', U, U, 'TLSv1_method', 'TLSv1');
 // The default default.
 if (DEFAULT_MIN_VERSION === 'TLSv1.2') {
   test(U, U, 'TLSv1_1_method', U, U, U,
-       U, 'ECONNRESET', 'ERR_SSL_UNSUPPORTED_PROTOCOL');
+       U, 'ECONNRESET', 'ERR_SSL_UNKNOWN_PROTOCOL');
   test(U, U, 'TLSv1_method', U, U, U,
-       U, 'ECONNRESET', 'ERR_SSL_UNSUPPORTED_PROTOCOL');
+       U, 'ECONNRESET', 'ERR_SSL_UNKNOWN_PROTOCOL');
 
   if (DEFAULT_MAX_VERSION === 'TLSv1.2') {
     test(U, U, U, U, U, 'TLSv1_1_method',
@@ -182,7 +182,7 @@ if (DEFAULT_MIN_VERSION === 'TLSv1.2') {
 if (DEFAULT_MIN_VERSION === 'TLSv1.1') {
   test(U, U, 'TLSv1_1_method', U, U, U, 'TLSv1.1');
   test(U, U, 'TLSv1_method', U, U, U,
-       U, 'ECONNRESET', 'ERR_SSL_UNSUPPORTED_PROTOCOL');
+       U, 'ECONNRESET', 'ERR_SSL_UNKNOWN_PROTOCOL');
   test(U, U, U, U, U, 'TLSv1_1_method', 'TLSv1.1');
 
   if (DEFAULT_MAX_VERSION === 'TLSv1.2') {
@@ -213,26 +213,9 @@ test(U, U, 'TLSv1_method', 'TLSv1', 'TLSv1.2', U, 'TLSv1');
 test(U, U, 'TLSv1_1_method', 'TLSv1', 'TLSv1.2', U, 'TLSv1.1');
 test(U, U, 'TLSv1_2_method', 'TLSv1', 'TLSv1.2', U, 'TLSv1.2');
 
-test('TLSv1', 'TLSv1.1', U, 'TLSv1', 'TLSv1.3', U, 'TLSv1.1');
 test('TLSv1', 'TLSv1.1', U, 'TLSv1', 'TLSv1.2', U, 'TLSv1.1');
 test('TLSv1', 'TLSv1.2', U, 'TLSv1', 'TLSv1.1', U, 'TLSv1.1');
-test('TLSv1', 'TLSv1.3', U, 'TLSv1', 'TLSv1.1', U, 'TLSv1.1');
 test('TLSv1', 'TLSv1', U, 'TLSv1', 'TLSv1.1', U, 'TLSv1');
 test('TLSv1', 'TLSv1.2', U, 'TLSv1', 'TLSv1', U, 'TLSv1');
-test('TLSv1', 'TLSv1.3', U, 'TLSv1', 'TLSv1', U, 'TLSv1');
 test('TLSv1.1', 'TLSv1.1', U, 'TLSv1', 'TLSv1.2', U, 'TLSv1.1');
 test('TLSv1', 'TLSv1.2', U, 'TLSv1.1', 'TLSv1.1', U, 'TLSv1.1');
-test('TLSv1', 'TLSv1.2', U, 'TLSv1', 'TLSv1.3', U, 'TLSv1.2');
-
-// v-any client can connect to v-specific server
-test('TLSv1', 'TLSv1.3', U, 'TLSv1.3', 'TLSv1.3', U, 'TLSv1.3');
-test('TLSv1', 'TLSv1.3', U, 'TLSv1.2', 'TLSv1.3', U, 'TLSv1.3');
-test('TLSv1', 'TLSv1.3', U, 'TLSv1.2', 'TLSv1.2', U, 'TLSv1.2');
-test('TLSv1', 'TLSv1.3', U, 'TLSv1.1', 'TLSv1.1', U, 'TLSv1.1');
-test('TLSv1', 'TLSv1.3', U, 'TLSv1', 'TLSv1', U, 'TLSv1');
-
-// v-specific client can connect to v-any server
-test('TLSv1.3', 'TLSv1.3', U, 'TLSv1', 'TLSv1.3', U, 'TLSv1.3');
-test('TLSv1.2', 'TLSv1.2', U, 'TLSv1', 'TLSv1.3', U, 'TLSv1.2');
-test('TLSv1.1', 'TLSv1.1', U, 'TLSv1', 'TLSv1.3', U, 'TLSv1.1');
-test('TLSv1', 'TLSv1', U, 'TLSv1', 'TLSv1.3', U, 'TLSv1');

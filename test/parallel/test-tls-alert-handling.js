@@ -33,7 +33,7 @@ let iter = 0;
 const errorHandler = common.mustCall((err) => {
   assert.strictEqual(err.code, 'ERR_SSL_WRONG_VERSION_NUMBER');
   assert.strictEqual(err.library, 'SSL routines');
-  assert.strictEqual(err.function, 'ssl3_get_record');
+  assert.strictEqual(err.function, 'SSL3_GET_RECORD');
   assert.strictEqual(err.reason, 'wrong version number');
   errorReceived = true;
   if (canCloseServer())

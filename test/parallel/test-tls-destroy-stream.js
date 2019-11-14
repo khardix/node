@@ -9,7 +9,7 @@ const net = require('net');
 const assert = require('assert');
 const tls = require('tls');
 
-tls.DEFAULT_MAX_VERSION = 'TLSv1.3';
+tls.DEFAULT_MAX_VERSION = 'TLSv1.2';
 
 // This test ensures that an instance of StreamWrap should emit "end" and
 // "close" when the socket on the other side call `destroy()` instead of
