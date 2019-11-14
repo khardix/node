@@ -50,6 +50,8 @@ const { getSystemErrorName } = require('util');
     delete providers.KEYPAIRGENREQUEST;
     delete providers.HTTPCLIENTREQUEST;
     delete providers.HTTPINCOMINGMESSAGE;
+    // SCRYPTREQUEST may not be available (OPENSSL_NO_SCRYPT)
+    delete providers.SCRYPTREQUEST;
 
     const objKeys = Object.keys(providers);
     if (objKeys.length > 0)
