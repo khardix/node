@@ -36,6 +36,8 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
+#include <node-ssl-shim/ssl-shim.h>
+
 namespace node {
 namespace crypto {
 

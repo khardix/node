@@ -319,6 +319,8 @@
     }],
     [ 'node_use_openssl=="true"', {
       'defines': [ 'HAVE_OPENSSL=1' ],
+      'include_dirs': ['node-ssl-shim/include/'],
+      'libraries': ['<!(realpath node-ssl-shim/lib/libnode-ssl-shim.a)'],
       'conditions': [
         ['openssl_fips != "" or openssl_is_fips=="true"', {
           'defines': [ 'NODE_FIPS_MODE' ],
