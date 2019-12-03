@@ -483,10 +483,12 @@ void SecureContext::Initialize(Environment* env, Local<Object> target) {
   env->SetProtoMethod(t, "setSigalgs", SetSigalgs);
   env->SetProtoMethod(t, "setECDHCurve", SetECDHCurve);
   env->SetProtoMethod(t, "setDHParam", SetDHParam);
+#if ! OPENSSL_IS_LEGACY
   env->SetProtoMethod(t, "setMaxProto", SetMaxProto);
   env->SetProtoMethod(t, "setMinProto", SetMinProto);
   env->SetProtoMethod(t, "getMaxProto", GetMaxProto);
   env->SetProtoMethod(t, "getMinProto", GetMinProto);
+#endif
   env->SetProtoMethod(t, "setOptions", SetOptions);
   env->SetProtoMethod(t, "setSessionIdContext", SetSessionIdContext);
   env->SetProtoMethod(t, "setSessionTimeout", SetSessionTimeout);
@@ -550,8 +552,8 @@ void SecureContext::Init(const FunctionCallbackInfo<Value>& args) {
   CHECK(args[1]->IsInt32());
   CHECK(args[2]->IsInt32());
 
-  int min_version = args[1].As<Int32>()->Value();
-  int max_version = args[2].As<Int32>()->Value();
+  [[maybe_unused]] int min_version = args[1].As<Int32>()->Value();
+  [[maybe_unused]] int max_version = args[2].As<Int32>()->Value();
   const SSL_METHOD* method = TLS_method();
 
   if (max_version == 0)
@@ -604,36 +606,39 @@ void SecureContext::Init(const FunctionCallbackInfo<Value>& args) {
     } else if (strcmp(*sslmethod, "TLSv1_method") == 0) {
       min_version = TLS1_VERSION;
       max_version = TLS1_VERSION;
+      method = TLSv1_method();
     } else if (strcmp(*sslmethod, "TLSv1_server_method") == 0) {
       min_version = TLS1_VERSION;
       max_version = TLS1_VERSION;
-      method = TLS_server_method();
+      method = TLSv1_server_method();
     } else if (strcmp(*sslmethod, "TLSv1_client_method") == 0) {
       min_version = TLS1_VERSION;
       max_version = TLS1_VERSION;
-      method = TLS_client_method();
+      method = TLSv1_client_method();
     } else if (strcmp(*sslmethod, "TLSv1_1_method") == 0) {
       min_version = TLS1_1_VERSION;
       max_version = TLS1_1_VERSION;
+      method = TLSv1_1_method();
     } else if (strcmp(*sslmethod, "TLSv1_1_server_method") == 0) {
       min_version = TLS1_1_VERSION;
       max_version = TLS1_1_VERSION;
-      method = TLS_server_method();
+      method = TLSv1_1_server_method();
     } else if (strcmp(*sslmethod, "TLSv1_1_client_method") == 0) {
       min_version = TLS1_1_VERSION;
       max_version = TLS1_1_VERSION;
-      method = TLS_client_method();
+      method = TLSv1_1_client_method();
     } else if (strcmp(*sslmethod, "TLSv1_2_method") == 0) {
       min_version = TLS1_2_VERSION;
       max_version = TLS1_2_VERSION;
+      method = TLSv1_2_method();
     } else if (strcmp(*sslmethod, "TLSv1_2_server_method") == 0) {
       min_version = TLS1_2_VERSION;
       max_version = TLS1_2_VERSION;
-      method = TLS_server_method();
+      method = TLSv1_2_server_method();
     } else if (strcmp(*sslmethod, "TLSv1_2_client_method") == 0) {
       min_version = TLS1_2_VERSION;
       max_version = TLS1_2_VERSION;
-      method = TLS_client_method();
+      method = TLSv1_2_client_method();
     } else {
       const std::string msg("Unknown method: ");
       THROW_ERR_TLS_INVALID_PROTOCOL_METHOD(env, (msg + * sslmethod).c_str());
@@ -663,8 +668,10 @@ void SecureContext::Init(const FunctionCallbackInfo<Value>& args) {
                                  SSL_SESS_CACHE_NO_INTERNAL |
                                  SSL_SESS_CACHE_NO_AUTO_CLEAR);
 
+#if ! OPENSSL_IS_LEGACY
   SSL_CTX_set_min_proto_version(sc->ctx_.get(), min_version);
   SSL_CTX_set_max_proto_version(sc->ctx_.get(), max_version);
+#endif
 
   // OpenSSL 1.1.0 changed the ticket key size, but the OpenSSL 1.0.x size was
   // exposed in the public API. To retain compatibility, install a callback
@@ -1285,6 +1292,7 @@ void SecureContext::SetDHParam(const FunctionCallbackInfo<Value>& args) {
 }
 
 
+#if ! OPENSSL_IS_LEGACY
 void SecureContext::SetMinProto(const FunctionCallbackInfo<Value>& args) {
   SecureContext* sc;
   ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
@@ -1333,6 +1341,7 @@ void SecureContext::GetMaxProto(const FunctionCallbackInfo<Value>& args) {
     SSL_CTX_get_max_proto_version(sc->ctx_.get());
   args.GetReturnValue().Set(static_cast<uint32_t>(version));
 }
+#endif // ! OPENSSL_IS_LEGACY
 
 
 void SecureContext::SetOptions(const FunctionCallbackInfo<Value>& args) {
