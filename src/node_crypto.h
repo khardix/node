@@ -240,7 +240,7 @@ class SSLWrap {
   static void AddMethods(Environment* env, v8::Local<v8::FunctionTemplate> t);
 
   static SSL_SESSION* GetSessionCallback(SSL* s,
-                                         const unsigned char* key,
+                                         unsigned char* key,
                                          int len,
                                          int* copy);
   static int NewSessionCallback(SSL* s, SSL_SESSION* sess);

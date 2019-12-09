@@ -220,7 +220,7 @@ long NodeBIO::Ctrl(BIO* bio, int cmd, long num,  // NOLINT(runtime/int)
 }
 
 
-const BIO_METHOD* NodeBIO::GetMethod() {
+BIO_METHOD* NodeBIO::GetMethod() {
   // This is called from InitCryptoOnce() to avoid race conditions during
   // initialization.
   static BIO_METHOD* method = nullptr;

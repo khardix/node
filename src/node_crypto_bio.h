@@ -127,7 +127,7 @@ class NodeBIO : public MemoryRetainer {
   static long Ctrl(BIO* bio, int cmd, long num,  // NOLINT(runtime/int)
                    void* ptr);
 
-  static const BIO_METHOD* GetMethod();
+  static BIO_METHOD* GetMethod();
 
   // Enough to handle the most of the client hellos
   static const size_t kInitialBufferLength = 1024;

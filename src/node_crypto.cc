@@ -146,7 +146,7 @@ template void SSLWrap<TLSWrap>::SetSNIContext(SecureContext* sc);
 template int SSLWrap<TLSWrap>::SetCACerts(SecureContext* sc);
 template SSL_SESSION* SSLWrap<TLSWrap>::GetSessionCallback(
     SSL* s,
-    const unsigned char* key,
+    unsigned char* key,
     int len,
     int* copy);
 template int SSLWrap<TLSWrap>::NewSessionCallback(SSL* s,
@@ -1799,7 +1799,7 @@ void SSLWrap<Base>::ConfigureSecureContext(SecureContext* sc) {
 
 template <class Base>
 SSL_SESSION* SSLWrap<Base>::GetSessionCallback(SSL* s,
-                                               const unsigned char* key,
+                                               unsigned char* key,
                                                int len,
                                                int* copy) {
   Base* w = static_cast<Base*>(SSL_get_app_data(s));
